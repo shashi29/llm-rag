@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import multiprocessing
 import time
+from tqdm import tqdm
 
 class DocumentProcessor:
     def __init__(self, input_directory, output_directory, num_processes=4, save_interval=100):
@@ -142,7 +143,6 @@ class DocumentProcessor:
         Process a document, extracting its content, hash, and creation time.
         """
         filename = os.path.basename(file_path)
-        print(f"Processing {filename}")
         
         try:
             if filename.lower().endswith('.pdf'):
@@ -154,7 +154,6 @@ class DocumentProcessor:
             
             hash_id = self.generate_hash(text)
             if hash_id in self.existing_hashes:
-                print(f"Duplicate document detected: {filename}")
                 return filename, None
             
             creation_time = self.get_creation_time(file_path)
@@ -163,7 +162,6 @@ class DocumentProcessor:
             
             return filename, {"content": text, "created_time": creation_time, "hash_id": hash_id, "is_resume": is_resume}
         except Exception as e:
-            print(f"Error processing file {filename}: {str(e)}")
             return filename, None
 
     def save_results(self, results, index):
@@ -220,7 +218,9 @@ class DocumentProcessor:
         resume_count = 0
         
         with multiprocessing.Pool(processes=self.num_processes) as pool:
-            for i, (filename, content) in enumerate(pool.imap_unordered(self.process_document, file_paths), 1):
+            for i, (filename, content) in enumerate(tqdm(pool.imap_unordered(self.process_document, file_paths), 
+                                                         total=len(file_paths), 
+                                                         desc="Processing Documents"), 1):
                 if content is not None:
                     processed_files[filename] = content
                     if content['is_resume']:
@@ -230,13 +230,12 @@ class DocumentProcessor:
                 
                 if i % self.save_interval == 0:
                     self.save_results(processed_files, i)
-                    print(f"Saved {i} processed documents")
         
         if len(processed_files) % self.save_interval != 0:
             self.save_results(processed_files, 'final')
         
         # Save summary
-        self.save_summary(start_time, len(file_paths), duplicate_count, resume_count, 'final')
+        self.save_summary(start_time, len(file_paths), duplicate_count, resume_count)
         
         return processed_files
 
@@ -250,6 +249,4 @@ if __name__ == "__main__":
     print(f"Total processed documents: {len(processed_documents)}")
     for filename, metadata in list(processed_documents.items())[:5]:  # Print preview of first 5 documents
         print(f"Processed {filename}")
-        print(f"Content preview: {metadata['content'][:100]}...")  # Print first 100 characters
-        print(f"Created Time: {metadata['created_time']}")
-        print(f"Hash ID: {metadata['hash_id']}")
+        print(f"Content preview: {metadata['content'][:100]}...")  # Print a preview of the content

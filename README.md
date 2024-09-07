@@ -1,7 +1,7 @@
 # llm-rag
 
 uv init llm-rag
-uv add pdfminer.six docx2txt
+uv add pdfminer.six docx2txt tqdm
 
 uv run pdfminer.six docx2txt check
 
