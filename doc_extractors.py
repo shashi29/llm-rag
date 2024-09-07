@@ -37,27 +37,27 @@ except ImportError:
     python_docx_installed = False
 
 
-    def extract_text_from_doc(doc_path):
-        """
-        Extract text from a DOC or DOCX file using multiple methods.
-        """
-        extract_methods = [
-            extract_text_using_pywin32,
-            extract_text_using_pypandoc,
-            extract_text_using_docx2python,
-            extract_text_using_textract,
-            extract_text_using_pymupdf,
-            extract_text_using_python_docx
-        ]
-        
-        for method in extract_methods:
-            try:
-                text = method(doc_path)
-                return text
-            except Exception as e:
-                print(f"Method {method.__name__} failed")
-        
-        raise Exception(f"Failed to extract text from {doc_path} using all available methods.")
+def extract_text_from_doc(doc_path):
+    """
+    Extract text from a DOC or DOCX file using multiple methods.
+    """
+    extract_methods = [
+        # extract_text_using_pywin32,
+        extract_text_using_pypandoc,
+        extract_text_using_docx2python,
+        extract_text_using_textract,
+        extract_text_using_pymupdf,
+        extract_text_using_python_docx
+    ]
+    
+    for method in extract_methods:
+        try:
+            text = method(doc_path)
+            return text
+        except Exception as e:
+            print(f"Method {method.__name__} failed")
+    
+    raise Exception(f"Failed to extract text from {doc_path} using all available methods.")
     
 def extract_text_using_pywin32(doc_path):
     """

@@ -75,28 +75,28 @@ class DocumentProcessor:
         
     #     return text
 
-    @staticmethod
-    def extract_text_from_doc_old(doc_path):
-        """
-        Extract text from a DOC or DOCX file.
-        """
-        try:
-            text = docx2txt.process(doc_path)
-        except Exception:
-            try:
-                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                    temp_filename = temp_file.name
+    # @staticmethod
+    # def extract_text_from_doc_old(doc_path):
+    #     """
+    #     Extract text from a DOC or DOCX file.
+    #     """
+    #     try:
+    #         text = docx2txt.process(doc_path)
+    #     except Exception:
+    #         try:
+    #             with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+    #                 temp_filename = temp_file.name
                 
-                subprocess.run(['antiword', doc_path], stdout=open(temp_filename, 'w'))
+    #             subprocess.run(['antiword', doc_path], stdout=open(temp_filename, 'w'))
                 
-                with open(temp_filename, 'r') as file_handle:
-                    text = file_handle.read()
+    #             with open(temp_filename, 'r') as file_handle:
+    #                 text = file_handle.read()
                 
-                os.unlink(temp_filename)
-            except Exception as e:
-                raise Exception(f"Failed to process DOC file: {str(e)}")
+    #             os.unlink(temp_filename)
+    #         except Exception as e:
+    #             raise Exception(f"Failed to process DOC file: {str(e)}")
         
-        return text
+    #     return text
 
     @staticmethod
     def generate_hash(content):
@@ -337,17 +337,16 @@ if __name__ == '__main__':
     input_directory = "/root/Batch1"
     output_directory = "/root/ProcessedResults"    
     
-    num_processes = 8
+    num_processes = 2
     save_interval = 100
 
     processor = DocumentProcessor(input_directory, output_directory, num_processes, save_interval)
-    #processor.process_documents_parallel()
+    processor.process_documents_parallel()
 
     specific_files = [
-        "ZHQI0pwKtJtVsP10Gn6e29vrKRSBOqo2M5EWYd25.doc",
-        "Zuoke_Okoro_resume.pdf"
+        "ZHQI0pwKtJtVsP10Gn6e29vrKRSBOqo2M5EWYd25.doc"
     ]
     # Process only the files in the list
-    processor.process_specific_files(specific_files)
+    #processor.process_specific_files(specific_files)
 
     

@@ -1,0 +1,13 @@
+tqdm
+pdfminer.six
+docx2txt
+pillow
+pypandoc
+docx2python
+#textract
+PyMuPDF
+python-docx
+pdfplumber
+# paddleocr
+llama-index
+langchain_community
