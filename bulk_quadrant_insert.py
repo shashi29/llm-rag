@@ -157,21 +157,24 @@ class QdrantOperations:
         json_path_list = glob.glob(f"{folder_path}*.json")
 
         for file_path in json_path_list:
-            with open(file_path, 'r') as file:
-                data = json.load(file)
-                for document_name, value in data.items():
-                    state_of_the_union = data[document_name]["content"]     
-                    logger.info(f"Inserting Document:{document_name}")
+            try:
+                with open(file_path, 'r') as file:
+                    data = json.load(file)
+                    for document_name, value in data.items():
+                        state_of_the_union = data[document_name]["content"]     
+                        logger.info(f"Inserting Document:{document_name}")
 
-                    text_splitter = RecursiveCharacterTextSplitter(
-                        chunk_size=1000,
-                        chunk_overlap=200,
-                        length_function=len,
-                        is_separator_regex=False,
-                    )
+                        text_splitter = RecursiveCharacterTextSplitter(
+                            chunk_size=1000,
+                            chunk_overlap=200,
+                            length_function=len,
+                            is_separator_regex=False,
+                        )
 
-                    texts = text_splitter.create_documents([state_of_the_union])
-                    inserted_ids = self.insert_points([doc.page_content for doc in texts], document_name, collection_name)
+                        texts = text_splitter.create_documents([state_of_the_union])
+                        inserted_ids = self.insert_points([doc.page_content for doc in texts], document_name, collection_name)
+            except Exception as ex:
+                logging.info("Issue while bulk insert")
 
 # Usage example
 if __name__ == "__main__":
@@ -192,11 +195,11 @@ if __name__ == "__main__":
     #texts = qdrant_ops.process_file(file_path, )
     #inserted_ids = qdrant_ops.insert_points(texts)
 
-    qdrant_ops.bulk_quadrant_insert(folder_path, collection_name)
+    #qdrant_ops.bulk_quadrant_insert(folder_path, collection_name)
 
     # Perform a search
-    # search_results = qdrant_ops.search("Show all the full stack developer", collection_name)
-    # print("Search results:", search_results)
+    search_results = qdrant_ops.search("Show all the full stack developer", collection_name)
+    print("Search results:", search_results)
 
     # Delete some points
     # qdrant_ops.delete_points(inserted_ids[:5])
