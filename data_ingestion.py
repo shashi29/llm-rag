@@ -54,50 +54,6 @@ class DocumentProcessor:
         
         return existing_hashes
 
-    # @staticmethod
-    # def extract_text_from_pdf(pdf_path):
-    #     """
-    #     Extract text from a PDF file using pdfminer.
-    #     """
-    #     resource_manager = PDFResourceManager()
-    #     fake_file_handle = io.StringIO()
-    #     converter = TextConverter(resource_manager, fake_file_handle, laparams=LAParams())
-    #     page_interpreter = PDFPageInterpreter(resource_manager, converter)
-        
-    #     with open(pdf_path, 'rb') as file_handle:
-    #         for page in PDFPage.get_pages(file_handle, caching=True, check_extractable=True):
-    #             page_interpreter.process_page(page)
-            
-    #         text = fake_file_handle.getvalue()
-        
-    #     converter.close()
-    #     fake_file_handle.close()
-        
-    #     return text
-
-    # @staticmethod
-    # def extract_text_from_doc_old(doc_path):
-    #     """
-    #     Extract text from a DOC or DOCX file.
-    #     """
-    #     try:
-    #         text = docx2txt.process(doc_path)
-    #     except Exception:
-    #         try:
-    #             with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-    #                 temp_filename = temp_file.name
-                
-    #             subprocess.run(['antiword', doc_path], stdout=open(temp_filename, 'w'))
-                
-    #             with open(temp_filename, 'r') as file_handle:
-    #                 text = file_handle.read()
-                
-    #             os.unlink(temp_filename)
-    #         except Exception as e:
-    #             raise Exception(f"Failed to process DOC file: {str(e)}")
-        
-    #     return text
-
     @staticmethod
     def generate_hash(content):
         """
@@ -147,9 +103,9 @@ class DocumentProcessor:
 
     @staticmethod
     def clean_text(text):
-        text = re.sub(r'\n+', ' ', text)
         # Remove special unicode characters like \u00a0 (non-breaking spaces)
-        text = re.sub(r'\\u\w{4}', ' ', text)
+        text = re.sub(r'\\u\w{4}', ' ', text)        
+        text = re.sub(r'\n+', ' ', text)
         # Remove multiple tabs and excess spaces
         text = re.sub(r'\t+', ' ', text)
         # Replace multiple spaces with a single space
@@ -179,6 +135,8 @@ class DocumentProcessor:
         Process a document, extracting its content, hash, and creation time.
         """
         filename = os.path.basename(file_path)
+        duplicate_flag = False
+        unprocessed_flag = False
         
         try:
             if filename.lower().endswith('.pdf'):
@@ -190,7 +148,8 @@ class DocumentProcessor:
             
             hash_id = self.generate_hash(text)
             if hash_id in self.existing_hashes:
-                return filename, None
+                duplicate_flag = True
+                return filename, None, duplicate_flag, unprocessed_flag
             
             text = DocumentProcessor.clean_text(text)
             contact_info = DocumentProcessor.extract_contact_info(text)
@@ -202,10 +161,11 @@ class DocumentProcessor:
                               "is_resume": is_resume, 
                               "contact_info":contact_info,
                               "created_time": creation_time, 
-                              "hash_id": hash_id,}
+                              "hash_id": hash_id,}, duplicate_flag, unprocessed_flag
         except Exception as e:
             print(f"Error processing {filename}: {e}")
-            return filename, None
+            unprocessed_flag = True
+            return filename, None, duplicate_flag, unprocessed_flag
 
     def save_results(self, results, index):
         """
@@ -225,7 +185,7 @@ class DocumentProcessor:
                 writer.writerow([filename, metadata['hash_id'], metadata['is_resume']])
                 self.existing_hashes.add(metadata['hash_id'])
 
-    def save_summary(self, start_time, file_count, duplicate_count, resume_count, unprocessed_files):
+    def save_summary(self, start_time, file_count, duplicate_files, resume_count, unprocessed_files):
         """
         Save a summary of the processing run to a JSON file.
         """
@@ -237,9 +197,11 @@ class DocumentProcessor:
             "run_end_time": datetime.fromtimestamp(end_time).isoformat(),
             "duration_seconds": duration,
             "total_files_processed": file_count,
-            "total_duplicates_detected": duplicate_count,
+            "total_duplicates_documents": duplicate_files,
+            "total_duplicates_count": len(duplicate_files),
             "total_resumes_detected": resume_count,
-            "unprocessed_documents": unprocessed_files  # Add unprocessed documents to the summary
+            "unprocessed_documents": unprocessed_files,  # Add unprocessed documents to the summary
+            "unprocessed_documents_count": len(unprocessed_files)
         }
 
         print(summary)
@@ -261,7 +223,7 @@ class DocumentProcessor:
                       if f.lower().endswith(('.pdf', '.doc', '.docx'))]
         
         processed_files = {}
-        duplicate_count = 0
+        duplicate_files = []
         resume_count = 0
         unprocessed_files = []
 
@@ -270,14 +232,17 @@ class DocumentProcessor:
                                            total=len(file_paths), 
                                            desc="Processing Documents"), 1):
                 # Unpack result properly: result is a tuple (filename, content)
-                filename, content = result
+                filename, content, duplicate_flag, unprocessed_flag = result
                 if content is not None:
                     processed_files[filename] = content
                     if content['is_resume']:
                         resume_count += 1
-                else:
-                    unprocessed_files.append(filename)  # Add filename to unprocessed list
-                    duplicate_count += 1
+                        
+                if unprocessed_flag:
+                    unprocessed_files.append(filename)
+                
+                if duplicate_flag:
+                    duplicate_files.append(filename)
                 
                 if i % self.save_interval == 0:
                     self.save_results(processed_files, i)
@@ -287,7 +252,7 @@ class DocumentProcessor:
             self.save_results(processed_files, 'final')
 
         # Save the summary after processing
-        self.save_summary(start_time, len(file_paths), duplicate_count, resume_count, unprocessed_files)
+        self.save_summary(start_time, len(file_paths), duplicate_files, resume_count, unprocessed_files)
 
 
     def process_specific_files(self, file_list):
@@ -304,7 +269,7 @@ class DocumentProcessor:
                       if os.path.isfile(os.path.join(self.input_directory, f))]
         
         processed_files = {}
-        duplicate_count = 0
+        duplicate_files = []
         resume_count = 0
         unprocessed_files = []
 
@@ -313,14 +278,17 @@ class DocumentProcessor:
             for i, result in enumerate(tqdm(pool.imap_unordered(self.process_document, file_paths), 
                                            total=len(file_paths), 
                                            desc="Processing Specific Documents"), 1):
-                filename, content = result
+                filename, content, duplicate_flag, unprocessed_flag = result
                 if content is not None:
                     processed_files[filename] = content
                     if content['is_resume']:
                         resume_count += 1
-                else:
+                        
+                if unprocessed_flag:
                     unprocessed_files.append(filename)
-                    duplicate_count += 1
+                
+                if duplicate_flag:
+                    duplicate_files.append(filename)
                 
                 if i % self.save_interval == 0:
                     self.save_results(processed_files, i)
@@ -330,7 +298,7 @@ class DocumentProcessor:
             self.save_results(processed_files, 'final')
 
         # Save the summary
-        self.save_summary(start_time, len(file_paths), duplicate_count, resume_count, unprocessed_files)
+        self.save_summary(start_time, len(file_paths), duplicate_files, resume_count, unprocessed_files)
         
 if __name__ == '__main__':
     
@@ -343,10 +311,10 @@ if __name__ == '__main__':
     processor = DocumentProcessor(input_directory, output_directory, num_processes, save_interval)
     processor.process_documents_parallel()
 
-    specific_files = [
-        "ZHQI0pwKtJtVsP10Gn6e29vrKRSBOqo2M5EWYd25.doc"
-    ]
-    # Process only the files in the list
-    #processor.process_specific_files(specific_files)
+    # specific_files = [
+    #     "ZHQI0pwKtJtVsP10Gn6e29vrKRSBOqo2M5EWYd25.doc"
+    # ]
+    # # Process only the files in the list
+    # processor.process_specific_files(specific_files)
 
     

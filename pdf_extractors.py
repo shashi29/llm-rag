@@ -5,6 +5,7 @@ from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.converter import TextConverter
 from pdfminer.layout import LAParams
 from pdfminer.pdfpage import PDFPage
+import numpy as np
 # from paddleocr import PaddleOCR
 from pdf2image import convert_from_path
 import easyocr
