@@ -302,10 +302,10 @@ class DocumentProcessor:
         
 if __name__ == '__main__':
     
-    input_directory = "/root/Batch1"
+    input_directory = "/root/resumes_7Sep2024/Allresumes"
     output_directory = "/root/ProcessedResults"    
     
-    num_processes = 2
+    num_processes = 8
     save_interval = 100
 
     processor = DocumentProcessor(input_directory, output_directory, num_processes, save_interval)
