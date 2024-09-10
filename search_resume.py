@@ -7,6 +7,8 @@ from collections import OrderedDict
 import os
 import json
 from tqdm import tqdm
+import pandas as pd
+from resume_job_matching import *
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -86,24 +88,77 @@ class StreamlitUI:
         try:
             with st.spinner("Searching..."):
                 results = self.search_app.search(query)
-            self.display_results(results)
+            self.display_results(query, results)
         except Exception as e:
             st.error(f"An error occurred while searching: {str(e)}")
 
-    def display_results(self, results: List[Dict[str, Any]]):
+    def display_results(self, query:str, results: List[Dict[str, Any]]):
         if not results:
             st.info("No results found for your query.")
             return
             
+        display_resume = list()
+        resume_service = ResumeJobMatchingService()
         for i, result in enumerate(results, 1):
             print(f"**Document Name:** {result['document_name']}")
             json_folder = "/root/ProcessedResults/json"
             document_contents = read_document_from_json(json_folder, result['document_name'])
             st.markdown(f"**Result {i}:**")
-            st.write(f"**Text:** {result['text']}")
             st.write(f"**Document Name:** {result['document_name']}")
-            st.write(f"**Score:** {result['score']:.4f}")
-            st.write(f"**Resume** {document_contents}")
+            analysis = resume_service.generate_match_analysis(query, document_contents)
+            # Overall Match Score
+            st.markdown(f"### **Overall Match Score:** {analysis['Overall_Match_Score']}")
+
+            # Skill Match Breakdown (Table format)
+            st.markdown("### **Skill Match Breakdown**")
+            skills_data = {
+                "Skill Type": ["Technical Skills", "Soft Skills", "Certifications"],
+                "Match": [
+                    analysis['Skill_Match_Breakdown']['Technical_Skills'],
+                    analysis['Skill_Match_Breakdown']['Soft_Skills'],
+                    analysis['Skill_Match_Breakdown']['Certifications'],
+                ]
+            }
+            skills_df = pd.DataFrame(skills_data)
+            st.table(skills_df)
+
+            # Experience Relevance
+            st.markdown("### **Experience Relevance**")
+            experience_relevance = analysis['Experience_Relevance']
+            st.markdown(f"- **Years of Relevant Experience:** {experience_relevance['Years_of_Relevant_Experience']}")
+            st.markdown(f"- **Experience Quality:** {experience_relevance['Experience_Quality']}")
+
+            # Project Alignment (Table format)
+            st.markdown("### **Project Alignment**")
+            project_data = [
+                {
+                    "Project Name": project['Project_Name'],
+                    "Description": project['Description'],
+                    "Relevance Score": project['Relevance_Score']
+                }
+                for project in analysis['Project_Alignment']
+            ]
+            project_df = pd.DataFrame(project_data)
+            st.table(project_df)
+
+            # Key Strengths and Notable Gaps
+            st.markdown("### **Key Strengths**")
+            for strength in analysis['Key_Strengths']:
+                st.markdown(f"- {strength}")
+
+            st.markdown("### **Notable Gaps**")
+            for gap in analysis['Notable_Gaps']:
+                st.markdown(f"- {gap}")
+
+            # Overall Assessment
+            st.markdown("### **Overall Assessment**")
+            st.write(analysis['Overall_Assessment'])
+
+            # Recommendations (Next Steps and Skill Enhancement)
+            st.markdown("### **Recommendations**")
+            st.markdown(f"- **Next Steps:** {analysis['Recommendations']['Next_Steps']}")
+            st.markdown(f"- **Skill Enhancement:** {analysis['Recommendations']['Skill_Enhancement']}")
+
             st.write("---")
 
 def read_document_from_json(json_folder: str, target_key: str):
