@@ -5,10 +5,8 @@ import logging
 from typing import List, Dict, Any
 from collections import OrderedDict
 import os
-import json
-from tqdm import tqdm
 import pandas as pd
-from resume_job_matching import *
+from resume_job_matching import ResumeJobMatchingService
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -36,15 +34,15 @@ class QdrantSearchApp:
         self.qdrant_client = QdrantClient(url=qdrant_url)
         self.embedding_model_name = embedding_model_name
         self.collection_name = collection_name
-        self.model_cache = LRUCache(capacity=1)
+        #self.model_cache = LRUCache(capacity=1)
         self.embedding_model = self.load_embedding_model()
 
     def load_embedding_model(self) -> SentenceTransformer:
-        model = self.model_cache.get(self.embedding_model_name)
+        model = None#self.model_cache.get(self.embedding_model_name)
         if model is None:
             logger.info(f"Loading embedding model: {self.embedding_model_name}")
             model = SentenceTransformer(self.embedding_model_name, trust_remote_code=True)
-            self.model_cache.put(self.embedding_model_name, model)
+            #self.model_cache.put(self.embedding_model_name, model)
         return model
 
     def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -69,12 +67,19 @@ class QdrantSearchApp:
             raise
 
 class StreamlitUI:
-    def __init__(self, search_app: QdrantSearchApp):
+    def __init__(self, search_app: QdrantSearchApp, resume_folder: str):
         self.search_app = search_app
+        self.resume_folder = resume_folder
 
     def render(self):
         st.title("Qdrant Search Application")
         st.write("Search through your document chunks stored in Qdrant.")
+
+        # Add a button to clear the cache
+        if st.button("Clear Cache"):
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            st.success("Cache cleared successfully!")
 
         query = st.text_input("Enter your search query:")
         if st.button("Search"):
@@ -92,119 +97,106 @@ class StreamlitUI:
         except Exception as e:
             st.error(f"An error occurred while searching: {str(e)}")
 
-    def display_results(self, query:str, results: List[Dict[str, Any]]):
+    def display_results(self, query: str, results: List[Dict[str, Any]]):
         if not results:
             st.info("No results found for your query.")
             return
             
-        display_resume = list()
         resume_service = ResumeJobMatchingService()
         for i, result in enumerate(results, 1):
-            print(f"**Document Name:** {result['document_name']}")
-            json_folder = "/root/ProcessedResults/json"
-            document_contents = read_document_from_json(json_folder, result['document_name'])
             st.markdown(f"**Result {i}:**")
             st.write(f"**Document Name:** {result['document_name']}")
-            analysis = resume_service.generate_match_analysis(query, document_contents)
-            # Overall Match Score
-            st.markdown(f"### **Overall Match Score:** {analysis['Overall_Match_Score']}")
 
-            # Skill Match Breakdown (Table format)
-            st.markdown("### **Skill Match Breakdown**")
-            skills_data = {
-                "Skill Type": ["Technical Skills", "Soft Skills", "Certifications"],
-                "Match": [
-                    analysis['Skill_Match_Breakdown']['Technical_Skills'],
-                    analysis['Skill_Match_Breakdown']['Soft_Skills'],
-                    analysis['Skill_Match_Breakdown']['Certifications'],
-                ]
-            }
-            skills_df = pd.DataFrame(skills_data)
-            st.table(skills_df)
+            # Add download link for the resume
+            resume_path = os.path.join(self.resume_folder, result['document_name'])
+            if os.path.exists(resume_path):
+                self.get_download_link(resume_path, result['document_name'], f"download_button_{i}")
+            else:
+                st.warning(f"Resume file not found: {result['document_name']}")
 
-            # Experience Relevance
-            st.markdown("### **Experience Relevance**")
-            experience_relevance = analysis['Experience_Relevance']
-            st.markdown(f"- **Years of Relevant Experience:** {experience_relevance['Years_of_Relevant_Experience']}")
-            st.markdown(f"- **Experience Quality:** {experience_relevance['Experience_Quality']}")
-
-            # Project Alignment (Table format)
-            st.markdown("### **Project Alignment**")
-            project_data = [
-                {
-                    "Project Name": project['Project_Name'],
-                    "Description": project['Description'],
-                    "Relevance Score": project['Relevance_Score']
-                }
-                for project in analysis['Project_Alignment']
-            ]
-            project_df = pd.DataFrame(project_data)
-            st.table(project_df)
-
-            # Key Strengths and Notable Gaps
-            st.markdown("### **Key Strengths**")
-            for strength in analysis['Key_Strengths']:
-                st.markdown(f"- {strength}")
-
-            st.markdown("### **Notable Gaps**")
-            for gap in analysis['Notable_Gaps']:
-                st.markdown(f"- {gap}")
-
-            # Overall Assessment
-            st.markdown("### **Overall Assessment**")
-            st.write(analysis['Overall_Assessment'])
-
-            # Recommendations (Next Steps and Skill Enhancement)
-            st.markdown("### **Recommendations**")
-            st.markdown(f"- **Next Steps:** {analysis['Recommendations']['Next_Steps']}")
-            st.markdown(f"- **Skill Enhancement:** {analysis['Recommendations']['Skill_Enhancement']}")
+            # Assume we have the resume content in result['text'] for analysis
+            analysis = resume_service.generate_match_analysis(query, result['text'])
+            
+            # Display analysis results
+            self.display_analysis(analysis)
 
             st.write("---")
 
-def read_document_from_json(json_folder: str, target_key: str):
-    """
-    Reads JSON files from the specified folder and looks for the specified key.
-    
-    Parameters:
-        json_folder (str): The folder containing JSON files.
-        target_key (str): The key to search for in the JSON files.
+    def get_download_link(self, file_path: str, file_name: str, key: str):
+        """Create a download link for the resume file."""
+        with open(file_path, "rb") as file:
+            st.download_button(
+                label="Download Resume",
+                data=file,
+                file_name=file_name,
+                mime="application/octet-stream",
+                key=key
+            )
 
-    Returns:
-        dict: A dictionary where keys are filenames and values are the document content.
-    """
-    document_contents = ""
-    json_files = [f for f in os.listdir(json_folder) if f.endswith('.json')]
+    def display_analysis(self, analysis: Dict[str, Any]):
+        # Overall Match Score
+        st.markdown(f"### **Overall Match Score:** {analysis['Overall_Match_Score']}")
 
-    # Progress bar to track reading progress
-    for json_file in tqdm(json_files, desc="Reading JSON files", unit="file"):
-        file_path = os.path.join(json_folder, json_file)
-        try:
-            with open(file_path, 'r') as file:
-                data = json.load(file)
-                
-                # Check if the target key exists in the JSON data
-                if target_key in data:
-                    document_contents = data[target_key]["content"]
-                    return document_contents
-                else:
-                    print(f"Key '{target_key}' not found in {json_file}")
-        
-        except json.JSONDecodeError as e:
-            print(f"Error decoding JSON in file {json_file}: {e}")
-        except Exception as e:
-            print(f"Error reading file {json_file}: {e}")
+        # Skill Match Breakdown (Table format)
+        st.markdown("### **Skill Match Breakdown**")
+        skills_data = {
+            "Skill Type": ["Technical Skills", "Soft Skills", "Certifications"],
+            "Match": [
+                analysis['Skill_Match_Breakdown']['Technical_Skills'],
+                analysis['Skill_Match_Breakdown']['Soft_Skills'],
+                analysis['Skill_Match_Breakdown']['Certifications'],
+            ]
+        }
+        skills_df = pd.DataFrame(skills_data)
+        st.table(skills_df)
 
-    return document_contents
+        # Experience Relevance
+        st.markdown("### **Experience Relevance**")
+        experience_relevance = analysis['Experience_Relevance']
+        st.markdown(f"- **Years of Relevant Experience:** {experience_relevance['Years_of_Relevant_Experience']}")
+        st.markdown(f"- **Experience Quality:** {experience_relevance['Experience_Quality']}")
+
+        # Project Alignment (Table format)
+        st.markdown("### **Project Alignment**")
+        project_data = [
+            {
+                "Project Name": project['Project_Name'],
+                "Description": project['Description'],
+                "Relevance Score": project['Relevance_Score']
+            }
+            for project in analysis['Project_Alignment']
+        ]
+        project_df = pd.DataFrame(project_data)
+        st.table(project_df)
+
+        # Key Strengths and Notable Gaps
+        st.markdown("### **Key Strengths**")
+        for strength in analysis['Key_Strengths']:
+            st.markdown(f"- {strength}")
+
+        st.markdown("### **Notable Gaps**")
+        for gap in analysis['Notable_Gaps']:
+            st.markdown(f"- {gap}")
+
+        # Overall Assessment
+        st.markdown("### **Overall Assessment**")
+        st.write(analysis['Overall_Assessment'])
+
+        # Recommendations (Next Steps and Skill Enhancement)
+        st.markdown("### **Recommendations**")
+        st.markdown(f"- **Next Steps:** {analysis['Recommendations']}")
+        #st.markdown(f"- **Skill Enhancement:** {analysis['Recommendations']['Areas_for_Development']}")
 
 def main():
     # Configuration
     qdrant_url = "http://localhost:6333"  # Replace with your Qdrant server URL
-    embedding_model_name = "nomic-ai/nomic-embed-text-v1"
+    embedding_model_name = "mixedbread-ai/mxbai-embed-large-v1"
     collection_name = "new_collection"  # Replace with your actual collection name
+    resume_folder = "/root/Batch1"  # Replace with the actual path to your resume documents
 
     # Initialize the application
     search_app = QdrantSearchApp(qdrant_url, embedding_model_name, collection_name)
-    ui = StreamlitUI(search_app)
+    ui = StreamlitUI(search_app, resume_folder)
 
     # Run the Streamlit UI
     ui.render()

@@ -97,18 +97,18 @@ class ResumeJobMatchingService:
         self.chain = self.prompt | self.model | self.parser
         
         # Initialize cache with JSONDisk
-        cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resume_job_match_cache')
-        self.cache = Cache(directory=cache_dir, disk=JSONDisk, disk_compress_level=6)
+        #cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resume_job_match_cache')
+        #self.cache = Cache(directory=cache_dir, disk=JSONDisk, disk_compress_level=6)
 
     def generate_match_analysis(self, job_description: str, candidate_resume: str) -> ResumeJobMatch:
         # Create a unique key for caching
-        cache_key = self._create_cache_key(job_description, candidate_resume)
+        #cache_key = self._create_cache_key(job_description, candidate_resume)
         
         # Try to get the result from cache
-        cached_result = self.cache.get(cache_key)
-        if cached_result:
-            logger.info("Retrieved result from cache")
-            return ResumeJobMatch(**cached_result)
+        #cached_result = self.cache.get(cache_key)
+        #if cached_result:
+        #    logger.info("Retrieved result from cache")
+        #    return ResumeJobMatch(**cached_result)
         
         # If not in cache, generate the analysis
         logger.info("Generating new resume-job match analysis using API")
@@ -118,7 +118,7 @@ class ResumeJobMatchingService:
         })
         
         # Cache the result
-        self.cache.set(cache_key, analysis)
+        #self.cache.set(cache_key, analysis)
         
         return analysis
 

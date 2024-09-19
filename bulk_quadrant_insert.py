@@ -433,7 +433,7 @@ class QdrantOperations:
 if __name__ == "__main__":
     qdrant_ops = QdrantOperations(
         qdrant_url="http://localhost:6333",
-        embedding_model_name="nomic-ai/nomic-embed-text-v1",
+        embedding_model_name="mixedbread-ai/mxbai-embed-large-v1",#"nomic-ai/nomic-embed-text-v1",
         output_folder="/root/ProcessedResults"
     )
     

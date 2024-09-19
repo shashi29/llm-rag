@@ -19,6 +19,34 @@ from tqdm import tqdm
 from doc_extractors import extract_text_from_doc
 from pdf_extractors import extract_text_from_pdf
 
+from bs4 import BeautifulSoup
+
+def extract_cleaned_text(file_path):
+    """
+    Extracts and cleans text from the provided HTML file by removing extra lines and spaces.
+    
+    Args:
+    - file_path (str): Path to the HTML file.
+    
+    Returns:
+    - str: Cleaned text with extra lines removed.
+    """
+    # Load the HTML file
+    with open(file_path, "r", encoding="utf-8") as file:
+        html_content = file.read()
+
+    # Parse the HTML content using BeautifulSoup
+    soup = BeautifulSoup(html_content, 'lxml')
+
+    # Extract all text content and split by lines
+    text_content = soup.get_text(separator="\n")
+
+    # Remove extra empty lines or lines with only whitespace
+    cleaned_text = "\n".join(line.strip() for line in text_content.splitlines() if line.strip())
+
+    return cleaned_text
+
+
 class DocumentProcessor:
     def __init__(self, input_directory, output_directory, num_processes=8, save_interval=100):
         self.input_directory = input_directory
@@ -143,6 +171,8 @@ class DocumentProcessor:
                 text = extract_text_from_pdf(file_path)
             elif filename.lower().endswith(('.doc', '.docx')):
                 text = extract_text_from_doc(file_path)
+            elif filename.lower().endswith('.html'):
+                text = extract_cleaned_text(file_path)
             else:
                 raise ValueError(f"Unsupported file type: {filename}")
             
@@ -220,7 +250,7 @@ class DocumentProcessor:
         """
         start_time = time.time()
         file_paths = [os.path.join(self.input_directory, f) for f in os.listdir(self.input_directory) 
-                      if f.lower().endswith(('.pdf', '.doc', '.docx'))]
+                      if f.lower().endswith(('.pdf', '.doc', '.docx', '.html'))]
         
         processed_files = {}
         duplicate_files = []
@@ -302,10 +332,11 @@ class DocumentProcessor:
         
 if __name__ == '__main__':
     
-    input_directory = "/root/resumes_7Sep2024/Allresumes"
-    output_directory = "/root/ProcessedResults"    
     
-    num_processes = 8
+    input_directory = "/root/New"
+    output_directory = "/root/ProcessedResults/resumes_7Sep2024/Allresumes"    
+    
+    num_processes = 12
     save_interval = 100
 
     processor = DocumentProcessor(input_directory, output_directory, num_processes, save_interval)
