@@ -1,143 +1,59 @@
-import streamlit as st
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
-import logging
-from typing import List, Dict, Any
-from collections import OrderedDict
 import os
+import json
+import requests
 import pandas as pd
-from resume_job_matching import ResumeJobMatchingService
+import streamlit as st
+from streamlit_extras.switch_page_button import switch_page
+from streamlit_extras.colored_header import colored_header
+from streamlit_extras.add_vertical_space import add_vertical_space
+import zipfile
+import io
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# FastAPI backend URL
+BACKEND_URL = "http://localhost:8000"
 
-class LRUCache:
-    def __init__(self, capacity: int):
-        self.cache = OrderedDict()
-        self.capacity = capacity
+def search_documents(query: str, limit: int):
+    response = requests.post(f"{BACKEND_URL}/search", json={"query": query, "limit": limit})
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Error: {response.status_code} - {response.text}")
+        return None
 
-    def get(self, key: str) -> Any:
-        if key not in self.cache:
-            return None
-        self.cache.move_to_end(key)
-        return self.cache[key]
+def create_zip_file(resume_file_paths):
+    """Creates a zip file containing the resumes and returns a BytesIO object."""
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+        for file_path in resume_file_paths:
+            if os.path.exists(file_path):
+                zip_file.write(file_path, os.path.basename(file_path))
+    zip_buffer.seek(0)
+    return zip_buffer
 
-    def put(self, key: str, value: Any) -> None:
-        if len(self.cache) >= self.capacity:
-            self.cache.popitem(last=False)
-        self.cache[key] = value
-        self.cache.move_to_end(key)
+def display_analysis(analysis, resume_file_path, document_name, index):
+    with st.expander(f"Result {index + 1}: {document_name}", expanded=False):
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown(f"### **Overall Match Score:** {analysis['Overall_Match_Score']}")
 
-class QdrantSearchApp:
-    def __init__(self, qdrant_url: str, embedding_model_name: str, collection_name: str):
-        self.qdrant_client = QdrantClient(url=qdrant_url)
-        self.embedding_model_name = embedding_model_name
-        self.collection_name = collection_name
-        #self.model_cache = LRUCache(capacity=1)
-        self.embedding_model = self.load_embedding_model()
-
-    def load_embedding_model(self) -> SentenceTransformer:
-        model = None#self.model_cache.get(self.embedding_model_name)
-        if model is None:
-            logger.info(f"Loading embedding model: {self.embedding_model_name}")
-            model = SentenceTransformer(self.embedding_model_name, trust_remote_code=True)
-            #self.model_cache.put(self.embedding_model_name, model)
-        return model
-
-    def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        try:
-            query_vector = self.embedding_model.encode(query).tolist()
-            search_result = self.qdrant_client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=limit
-            )
-            return [
-                {
-                    "text_id": hit.payload["text_id"],
-                    "text": hit.payload["text"],
-                    "document_name": hit.payload["document_name"],
-                    "score": hit.score
-                }
-                for hit in search_result
-            ]
-        except Exception as e:
-            logger.error(f"Error during search: {e}")
-            raise
-
-class StreamlitUI:
-    def __init__(self, search_app: QdrantSearchApp, resume_folder: str):
-        self.search_app = search_app
-        self.resume_folder = resume_folder
-
-    def render(self):
-        st.title("Qdrant Search Application")
-        st.write("Search through your document chunks stored in Qdrant.")
-
-        # Add a button to clear the cache
-        if st.button("Clear Cache"):
-            st.cache_data.clear()
-            st.cache_resource.clear()
-            st.success("Cache cleared successfully!")
-
-        query = st.text_input("Enter your search query:")
-        if st.button("Search"):
-            self.handle_search(query)
-
-    def handle_search(self, query: str):
-        if not query.strip():
-            st.warning("Please enter a query to search.")
-            return
-
-        try:
-            with st.spinner("Searching..."):
-                results = self.search_app.search(query)
-            self.display_results(query, results)
-        except Exception as e:
-            st.error(f"An error occurred while searching: {str(e)}")
-
-    def display_results(self, query: str, results: List[Dict[str, Any]]):
-        if not results:
-            st.info("No results found for your query.")
-            return
-            
-        resume_service = ResumeJobMatchingService()
-        for i, result in enumerate(results, 1):
-            st.markdown(f"**Result {i}:**")
-            st.write(f"**Document Name:** {result['document_name']}")
-
-            # Add download link for the resume
-            resume_path = os.path.join(self.resume_folder, result['document_name'])
-            if os.path.exists(resume_path):
-                self.get_download_link(resume_path, result['document_name'], f"download_button_{i}")
+        with col2:
+            # Only try to access the file if it exists
+            if os.path.exists(resume_file_path):
+                with open(resume_file_path, "rb") as f:
+                    # Use `st.download_button` without causing a script re-run
+                    st.download_button(
+                        label="Download Resume",
+                        data=f,
+                        file_name=os.path.basename(resume_file_path),
+                        mime="application/pdf",  # Adjust mime type as needed
+                        key=f"download_{index}",
+                        help="Download the resume file."
+                    )
             else:
-                st.warning(f"Resume file not found: {result['document_name']}")
+                st.warning("Resume file not found.")
 
-            # Assume we have the resume content in result['text'] for analysis
-            analysis = resume_service.generate_match_analysis(query, result['text'])
-            
-            # Display analysis results
-            self.display_analysis(analysis)
-
-            st.write("---")
-
-    def get_download_link(self, file_path: str, file_name: str, key: str):
-        """Create a download link for the resume file."""
-        with open(file_path, "rb") as file:
-            st.download_button(
-                label="Download Resume",
-                data=file,
-                file_name=file_name,
-                mime="application/octet-stream",
-                key=key
-            )
-
-    def display_analysis(self, analysis: Dict[str, Any]):
-        # Overall Match Score
-        st.markdown(f"### **Overall Match Score:** {analysis['Overall_Match_Score']}")
-
-        # Skill Match Breakdown (Table format)
+        # Display the analysis details (rest of the content remains unchanged)
         st.markdown("### **Skill Match Breakdown**")
         skills_data = {
             "Skill Type": ["Technical Skills", "Soft Skills", "Certifications"],
@@ -150,13 +66,18 @@ class StreamlitUI:
         skills_df = pd.DataFrame(skills_data)
         st.table(skills_df)
 
-        # Experience Relevance
-        st.markdown("### **Experience Relevance**")
-        experience_relevance = analysis['Experience_Relevance']
-        st.markdown(f"- **Years of Relevant Experience:** {experience_relevance['Years_of_Relevant_Experience']}")
-        st.markdown(f"- **Experience Quality:** {experience_relevance['Experience_Quality']}")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("### **Experience Relevance**")
+            experience_relevance = analysis['Experience_Relevance']
+            st.markdown(f"- **Years of Relevant Experience:** {experience_relevance['Years_of_Relevant_Experience']}")
+            st.markdown(f"- **Experience Quality:** {experience_relevance['Experience_Quality']}")
 
-        # Project Alignment (Table format)
+        with col2:
+            st.markdown("### **Key Strengths**")
+            for strength in analysis['Key_Strengths']:
+                st.markdown(f"- {strength}")
+
         st.markdown("### **Project Alignment**")
         project_data = [
             {
@@ -169,37 +90,67 @@ class StreamlitUI:
         project_df = pd.DataFrame(project_data)
         st.table(project_df)
 
-        # Key Strengths and Notable Gaps
-        st.markdown("### **Key Strengths**")
-        for strength in analysis['Key_Strengths']:
-            st.markdown(f"- {strength}")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("### **Notable Gaps**")
+            for gap in analysis['Notable_Gaps']:
+                st.markdown(f"- {gap}")
 
-        st.markdown("### **Notable Gaps**")
-        for gap in analysis['Notable_Gaps']:
-            st.markdown(f"- {gap}")
+        with col2:
+            st.markdown("### **Recommendations**")
+            st.markdown(f"- **Next Steps:** {analysis['Recommendations']}")
 
-        # Overall Assessment
         st.markdown("### **Overall Assessment**")
         st.write(analysis['Overall_Assessment'])
 
-        # Recommendations (Next Steps and Skill Enhancement)
-        st.markdown("### **Recommendations**")
-        st.markdown(f"- **Next Steps:** {analysis['Recommendations']}")
-        #st.markdown(f"- **Skill Enhancement:** {analysis['Recommendations']['Areas_for_Development']}")
-
 def main():
-    # Configuration
-    qdrant_url = "http://localhost:6333"  # Replace with your Qdrant server URL
-    embedding_model_name = "mixedbread-ai/mxbai-embed-large-v1"
-    collection_name = "new_collection"  # Replace with your actual collection name
-    resume_folder = "/root/Batch1"  # Replace with the actual path to your resume documents
+    st.set_page_config(page_title="Resume Search Application", layout="wide")
+    
+    colored_header(
+        label="Resume Search Application",
+        description="Find the best candidates for your job openings",
+        color_name="blue-70"
+    )
 
-    # Initialize the application
-    search_app = QdrantSearchApp(qdrant_url, embedding_model_name, collection_name)
-    ui = StreamlitUI(search_app, resume_folder)
+    add_vertical_space(2)
 
-    # Run the Streamlit UI
-    ui.render()
+    # Search section
+    st.header("Search Resume Documents")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        query = st.text_input("Enter your search query:")
+    with col2:
+        limit = st.number_input("Number of results:", min_value=1, max_value=100, value=5)
+
+    if st.button("Search", type="primary"):
+        if query:
+            with st.spinner("Searching..."):
+                results = search_documents(query, limit)
+            if results:
+                resume_file_paths = []
+                for i, result in enumerate(results):
+                    resume_file_path = f"/root/data/ProcessedResults/resume/{result['document_name']}"
+                    resume_file_paths.append(resume_file_path)
+                    display_analysis(result['analysis'], resume_file_path, result['document_name'], i)
+
+                # Create a zip file for all resumes
+                if resume_file_paths:
+                    zip_file = create_zip_file(resume_file_paths)
+                    st.download_button(
+                        label="Download All Resumes",
+                        data=zip_file,
+                        file_name="resumes.zip",
+                        mime="application/zip",
+                        help="Download all resumes as a zip file."
+                    )
+            else:
+                st.info("No results found.")
+        else:
+            st.warning("Please enter a search query.")
+
+    add_vertical_space(2)
+    st.markdown("---")
+    add_vertical_space(1)
 
 if __name__ == "__main__":
     main()

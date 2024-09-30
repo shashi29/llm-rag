@@ -333,10 +333,10 @@ class DocumentProcessor:
 if __name__ == '__main__':
     
     
-    input_directory = "/root/New"
-    output_directory = "/root/ProcessedResults/resumes_7Sep2024/Allresumes"    
+    input_directory = "/root/data/Resume_21Sep2024_40GB_Part1"
+    output_directory = "/root/data/ProcessedResults/"    
     
-    num_processes = 12
+    num_processes = 20
     save_interval = 100
 
     processor = DocumentProcessor(input_directory, output_directory, num_processes, save_interval)

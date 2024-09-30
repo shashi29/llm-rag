@@ -55,7 +55,8 @@ def extract_text_from_doc(doc_path):
             text = method(doc_path)
             return text
         except Exception as e:
-            print(f"Method {method.__name__} failed")
+            pass
+            #print(f"Method {method.__name__} failed")
     
     raise Exception(f"Failed to extract text from {doc_path} using all available methods.")
     

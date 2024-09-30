@@ -219,7 +219,7 @@ class DocumentProcessor:
         self.save_summary(start_time, total_processed, total_duplicates, total_resumes, total_unprocessed)
 
 if __name__ == '__main__':
-    input_directory = "/root/data/Resume_21Sep2024_40GB_Part1"
+    input_directory = "/root/data/Resume_22Sep2024_10GB"
     output_directory = "/root/data/ProcessedResults/"
     batch_size = 1000
     num_processes = 6

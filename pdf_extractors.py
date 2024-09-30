@@ -28,7 +28,8 @@ def extract_text_from_pdf(pdf_path):
             if text:
                 return text
         except Exception as e:
-            print(f"Method {method.__name__} failed: {e}")
+            pass
+            #print(f"Method {method.__name__} failed: {e}")
     
     raise Exception(f"Failed to extract text from {pdf_path} using all available methods.")
 
